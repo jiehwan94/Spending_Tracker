@@ -1,0 +1,1 @@
+web: streamlit run spending_tracker_auth.py --server.port=$PORT --server.address=0.0.0.0 
