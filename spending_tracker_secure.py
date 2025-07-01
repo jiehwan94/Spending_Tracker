@@ -8,6 +8,14 @@ import hashlib
 import os
 import time
 
+# Load environment variables from .env file for local development
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    # dotenv not installed, continue without it
+    pass
+
 # Page configuration
 st.set_page_config(
     page_title="Spending Tracker",
@@ -28,29 +36,77 @@ def hash_password(password):
     """Hash password for security"""
     return hashlib.sha256(password.encode()).hexdigest()
 
+def get_available_usernames():
+    """Get list of available usernames from environment variables (for debugging)"""
+    usernames = []
+    
+    # Primary user
+    primary_username = os.getenv("ST_USERNAME")
+    if primary_username:
+        usernames.append(primary_username)
+    
+    # Additional users
+    i = 2
+    while True:
+        additional_username = os.getenv(f"ST_USERNAME_{i}")
+        if additional_username:
+            usernames.append(additional_username)
+            i += 1
+        else:
+            break
+    
+    return usernames
+
 def check_credentials(username, password):
     """Check user credentials using environment variables"""
     # Get credentials from environment variables (more secure)
-    env_username = os.getenv("ST_USERNAME", "admin")
-    env_password = os.getenv("ST_PASSWORD", "admin123")
+    env_username = os.getenv("ST_USERNAME")
+    env_password = os.getenv("ST_PASSWORD")
     
-    # Fallback credentials (for development)
-    fallback_credentials = {
-        "admin": hash_password("admin123"),
-        "demo": hash_password("demo123"),
-    }
+    # Check if environment variables are set
+    if not env_username or not env_password:
+        # For local development, provide helpful instructions
+        st.error("⚠️ Environment variables not configured.")
+        st.info("💡 **For local development**: Create a `.env` file with your credentials or set environment variables.")
+        st.code("ST_USERNAME=your_username\nST_PASSWORD=your_password", language="bash")
+        st.info("💡 **For Streamlit Cloud**: Go to app settings → Secrets and add your credentials.")
+        return False
     
-    # Check environment variables first
+    # Check environment variables
     if username == env_username and hash_password(password) == hash_password(env_password):
         return True
     
-    # Check fallback credentials
-    return username in fallback_credentials and fallback_credentials[username] == hash_password(password)
+    # If you want to support multiple users, you can add them as additional environment variables
+    # For example: ST_USERNAME_2, ST_PASSWORD_2, etc.
+    additional_users = []
+    i = 2
+    while True:
+        additional_username = os.getenv(f"ST_USERNAME_{i}")
+        additional_password = os.getenv(f"ST_PASSWORD_{i}")
+        if additional_username and additional_password:
+            additional_users.append((additional_username, additional_password))
+            i += 1
+        else:
+            break
+    
+    # Check additional users
+    for additional_username, additional_password in additional_users:
+        if username == additional_username and hash_password(password) == hash_password(additional_password):
+            return True
+    
+    return False
 
 def login_page():
     """Display login page with rate limiting"""
     st.title("🔐 Spending Tracker Login")
     st.markdown("Please enter your credentials to access the spending tracker.")
+    
+    # Check if environment variables are configured
+    available_usernames = get_available_usernames()
+    if not available_usernames:
+        st.error("⚠️ **Configuration Error**: Environment variables not set. Please configure ST_USERNAME and ST_PASSWORD in Streamlit Cloud secrets.")
+        st.info("💡 **To fix this**: Go to your Streamlit Cloud app settings → Secrets and add your credentials.")
+        return
     
     # Rate limiting
     current_time = time.time()
@@ -78,6 +134,12 @@ def login_page():
             else:
                 st.session_state.login_attempts += 1
                 st.error(f"Invalid username or password. Attempt {st.session_state.login_attempts}/3")
+    
+    # Debug information (only show in development)
+    if st.secrets.get("DEBUG_MODE", False):
+        with st.expander("🔧 Debug Information"):
+            st.write(f"Available usernames: {', '.join(available_usernames)}")
+            st.write(f"Environment variables configured: {len(available_usernames) > 0}")
     
     # Add some styling
     st.markdown("---")
