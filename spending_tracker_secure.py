@@ -2,11 +2,14 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from datetime import datetime, timedelta
 import numpy as np
 import hashlib
 import os
 import time
+
+from datetime import datetime, timedelta
+from google_drive_utils import load_data_with_fallback
+
 
 # Load environment variables from .env file for local development
 try:
@@ -136,7 +139,13 @@ def login_page():
                 st.error(f"Invalid username or password. Attempt {st.session_state.login_attempts}/3")
     
     # Debug information (only show in development)
-    if st.secrets.get("DEBUG_MODE", False):
+    try:
+        debug_mode = st.secrets.get("DEBUG_MODE", False)
+    except:
+        # If secrets file doesn't exist (local development), check environment variable
+        debug_mode = os.getenv("DEBUG_MODE", "false").lower() == "true"
+    
+    if debug_mode:
         with st.expander("🔧 Debug Information"):
             st.write(f"Available usernames: {', '.join(available_usernames)}")
             st.write(f"Environment variables configured: {len(available_usernames) > 0}")
@@ -150,17 +159,10 @@ def login_page():
     </div>
     """, unsafe_allow_html=True)
 
-@st.cache_data
+@st.cache_data(ttl=300)  # Cache for 5 minutes to allow for data updates
 def load_data():
-    """Load data from Excel file"""
-    try:
-        df = pd.read_excel('data/transactions.xlsx', sheet_name="변동비")
-        # Convert date column to datetime if it's not already
-        df['지출일'] = pd.to_datetime(df['지출일'])
-        return df
-    except Exception as e:
-        st.error(f"Error loading data: {e}")
-        return pd.DataFrame()
+    """Load data from Google Drive with fallback to local file"""
+    return load_data_with_fallback()
 
 def main_app():
     """Main application after authentication"""
