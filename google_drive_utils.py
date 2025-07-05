@@ -78,7 +78,7 @@ def get_file_id_from_path(folder_name, file_name):
         st.error(f"Error finding file: {e}")
         return None
 
-def load_excel_from_drive(folder_name="FINANCE", file_name="가계부.xlsx", sheet_name="변동비"):
+def load_excel_from_drive(folder_name, file_name, sheet_name):
     """Load Excel file from Google Drive"""
     
     # Method 1: Try using direct file ID (if provided in environment)
@@ -93,7 +93,7 @@ def load_excel_from_drive(folder_name="FINANCE", file_name="가계부.xlsx", she
         return pd.DataFrame()
     
     # Download the file
-    temp_filename = "temp_data.xlsx"
+    temp_filename = f"temp_{file_name}_data.xlsx"
     if download_file_from_drive(file_id, temp_filename):
         try:
             # Load the Excel file
@@ -136,7 +136,7 @@ def load_data_with_fallback():
     """Load data with fallback to local file if Google Drive fails"""
     
     # Try Google Drive first
-    df = load_excel_from_drive()
+    df = load_excel_from_drive(folder_name="FINANCE", file_name="가계부.xlsx", sheet_name="변동비")
     
     if df.empty:
         st.warning("Could not load from Google Drive. Trying local file...")
