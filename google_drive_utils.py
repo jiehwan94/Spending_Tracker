@@ -154,4 +154,4 @@ def load_data_with_fallback():
     if '지출일' in df.columns:
         df['지출일'] = pd.to_datetime(df['지출일'])
     
-    return df 
+    return df

@@ -189,6 +189,10 @@ def main_app():
             st.session_state.current_page = "Credit Card History"
             st.rerun()
         
+        if st.button("📊 Asset Tracker", use_container_width=True):
+            st.session_state.current_page = "Asset Tracker"
+            st.rerun()
+        
         # Show current page
         st.sidebar.markdown(f"**Current Page:** {st.session_state.current_page}")
     
@@ -197,6 +201,8 @@ def main_app():
         spending_tracker_page()
     elif st.session_state.current_page == "Credit Card History":
         credit_card_history_page()
+    elif st.session_state.current_page == "Asset Tracker":
+        asset_tracker_page()
 
 def spending_tracker_page():
     """Spending tracker page"""
@@ -457,6 +463,43 @@ def load_credit_card_data():
         st.error("Failed to download file from Google Drive")
         return pd.DataFrame()
 
+def load_asset_tracker_data():
+    """Load asset tracker data from Google Drive"""
+    # Import the functions we need
+    from google_drive_utils import get_file_id_from_path, download_file_from_drive
+    
+    # Check if there's a specific file ID for asset tracker
+    asset_tracker_file_id = os.getenv("ASSET_TRACKER_FILE_ID")
+    if asset_tracker_file_id:
+        file_id = asset_tracker_file_id
+    else:
+        # Search for file by path
+        file_id = get_file_id_from_path("FINANCE", "자산트랙킹.xlsx")
+        if not file_id:
+            st.error("Could not find asset tracker file in Google Drive")
+            return pd.DataFrame()
+    
+    # Download the file temporarily
+    temp_filename = "temp_asset_tracker_data.xlsx"
+    if download_file_from_drive(file_id, temp_filename):
+        try:
+            # Load the correct sheet
+            df = pd.read_excel(temp_filename, sheet_name="자산트랙킹_v2")
+            return df
+        except Exception as e:
+            st.error(f"Error loading asset tracker data: {e}")
+            return pd.DataFrame()
+        finally:
+            # Clean up temporary file
+            try:
+                if os.path.exists(temp_filename):
+                    os.remove(temp_filename)
+            except:
+                pass  # Ignore cleanup errors
+    else:
+        st.error("Failed to download file from Google Drive")
+        return pd.DataFrame()
+
 def credit_card_history_page():
     """Credit card history page"""
     st.subheader("📋 Credit Card History")
@@ -564,6 +607,100 @@ def credit_card_history_page():
     # Display the dataframe
     st.dataframe(
         display_df,
+        use_container_width=True,
+        hide_index=True
+    )
+
+def load_asset_tracker_data():
+    """Load credit card history data from Google Drive"""
+    # Import the functions we need
+    from google_drive_utils import get_file_id_from_path, download_file_from_drive
+    
+    # Check if there's a specific file ID for credit card history
+    credit_card_file_id = os.getenv("ASSET_TRACKER_FILE_ID")
+    if credit_card_file_id:
+        file_id = credit_card_file_id
+    else:
+        # Search for file by path
+        file_id = get_file_id_from_path("FINANCE", "자산트랙킹.xlsx")
+        if not file_id:
+            st.error("Could not find asset tracker file in Google Drive")
+            return pd.DataFrame()
+    
+    # Download the file temporarily
+    temp_filename = "temp_asset_tracker_data.xlsx"
+    if download_file_from_drive(file_id, temp_filename):
+        try:
+            # Load the correct sheet
+            df = pd.read_excel(temp_filename, sheet_name="자산트랙킹_v2")
+            return df
+        except Exception as e:
+            st.error(f"Error loading asset tracker data: {e}")
+            return pd.DataFrame()
+        finally:
+            # Clean up temporary file
+            try:
+                if os.path.exists(temp_filename):
+                    os.remove(temp_filename)
+            except:
+                pass  # Ignore cleanup errors
+    else:
+        st.error("Failed to download file from Google Drive")
+        return pd.DataFrame()
+
+
+def asset_tracker_page():
+    """Asset tracker page"""
+    st.subheader("📊 Asset Tracker")
+    
+    # Load data
+    with st.spinner("Loading asset tracker data from Google Drive..."):
+        df = load_asset_tracker_data()
+    
+    if df.empty:
+        st.error("No asset tracker data found. Please check the file path and sheet name.")
+        return
+    
+    # Display basic info
+    st.success(f"✅ Loaded {len(df)} asset records")
+    
+    # Show data info
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        total_accounts = df['Account'].nunique()
+        st.metric("Total Accounts", total_accounts)
+    
+    with col2:
+        total_categories = df['Category'].nunique()
+        st.metric("Total Categories", total_categories)
+    
+    with col3:
+        if 'Value' in df.columns:
+            # Convert Value to numeric, handling any non-numeric values
+            df['Value'] = pd.to_numeric(df['Value'], errors='coerce')
+            total_value = df['Value'].sum()
+            st.metric("Total Value", f"${total_value:,.0f}")
+        else:
+            st.metric("Total Value", "N/A")
+    
+    with col4:
+        if 'YearMonth' in df.columns:
+            # Get the most recent month
+            try:
+                # Convert YearMonth to datetime if it's not already
+                if not pd.api.types.is_datetime64_any_dtype(df['YearMonth']):
+                    df['YearMonth'] = pd.to_datetime(df['YearMonth'])
+                latest_month = df['YearMonth'].max()
+                st.metric("Latest Month", latest_month.strftime('%Y-%m'))
+            except:
+                st.metric("Latest Month", "N/A")
+        else:
+            st.metric("Latest Month", "N/A")
+    
+    # Display the dataframe
+    st.dataframe(
+        df,
         use_container_width=True,
         hide_index=True
     )
