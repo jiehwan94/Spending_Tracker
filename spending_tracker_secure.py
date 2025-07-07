@@ -661,6 +661,14 @@ def asset_tracker_page():
         st.error("No asset tracker data found. Please check the file path and sheet name.")
         return
     
+    # Data preprocessing
+    if 'Value' in df.columns:
+        df['Value'] = pd.to_numeric(df['Value'], errors='coerce')
+    
+    if 'YearMonth' in df.columns:
+        if not pd.api.types.is_datetime64_any_dtype(df['YearMonth']):
+            df['YearMonth'] = pd.to_datetime(df['YearMonth'])
+    
     # Display basic info
     st.success(f"✅ Loaded {len(df)} asset records")
     
@@ -676,21 +684,18 @@ def asset_tracker_page():
         st.metric("Total Categories", total_categories)
     
     with col3:
-        if 'Value' in df.columns:
-            # Convert Value to numeric, handling any non-numeric values
-            df['Value'] = pd.to_numeric(df['Value'], errors='coerce')
-            total_value = df['Value'].sum()
-            st.metric("Total Value", f"${total_value:,.0f}")
+        if 'Value' in df.columns and 'YearMonth' in df.columns:
+            # Get the latest month's total value
+            latest_month = df['YearMonth'].max()
+            latest_data = df[df['YearMonth'] == latest_month]
+            total_value = latest_data['Value'].sum()
+            st.metric("Total Value (Latest Month)", f"${total_value:,.0f}")
         else:
             st.metric("Total Value", "N/A")
     
     with col4:
         if 'YearMonth' in df.columns:
-            # Get the most recent month
             try:
-                # Convert YearMonth to datetime if it's not already
-                if not pd.api.types.is_datetime64_any_dtype(df['YearMonth']):
-                    df['YearMonth'] = pd.to_datetime(df['YearMonth'])
                 latest_month = df['YearMonth'].max()
                 st.metric("Latest Month", latest_month.strftime('%Y-%m'))
             except:
@@ -698,9 +703,241 @@ def asset_tracker_page():
         else:
             st.metric("Latest Month", "N/A")
     
-    # Display the dataframe
+    # Asset Allocation Analysis
+    st.subheader("📈 Asset Allocation Analysis")
+    
+    # Create tabs for different views
+    tab1, tab2, tab3, tab4 = st.tabs(["Current Allocation", "Growth Over Time", "Account Performance", "Category Trends"])
+    
+    with tab1:
+        st.write("**Current Asset Allocation (Latest Month)**")
+        
+        if 'YearMonth' in df.columns and 'Value' in df.columns:
+            # Get the latest month's data
+            latest_month = df['YearMonth'].max()
+            latest_data = df[df['YearMonth'] == latest_month]
+            
+            if not latest_data.empty:
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    # Pie chart by Category
+                    category_allocation = latest_data.groupby('Category')['Value'].sum()
+                    fig_category = px.pie(
+                        values=category_allocation.values,
+                        names=category_allocation.index,
+                        title="Asset Allocation by Category"
+                    )
+                    st.plotly_chart(fig_category, use_container_width=True)
+                
+                with col2:
+                    # Pie chart by Account
+                    account_allocation = latest_data.groupby('Account')['Value'].sum()
+                    fig_account = px.pie(
+                        values=account_allocation.values,
+                        names=account_allocation.index,
+                        title="Asset Allocation by Account"
+                    )
+                    st.plotly_chart(fig_account, use_container_width=True)
+                
+                # Current allocation table
+                st.write("**Detailed Current Allocation**")
+                allocation_summary = latest_data.groupby(['Category', 'Account'])['Value'].sum().reset_index()
+                allocation_summary['Percentage'] = (allocation_summary['Value'] / allocation_summary['Value'].sum() * 100).round(2)
+                allocation_summary['Value_Formatted'] = allocation_summary['Value'].apply(lambda x: f"${x:,.0f}")
+                allocation_summary['Percentage_Formatted'] = allocation_summary['Percentage'].apply(lambda x: f"{x}%")
+                
+                st.dataframe(
+                    allocation_summary[['Category', 'Account', 'Value_Formatted', 'Percentage_Formatted']],
+                    use_container_width=True,
+                    hide_index=True
+                )
+            else:
+                st.warning("No data found for the latest month")
+        else:
+            st.warning("Missing required columns (YearMonth or Value)")
+    
+    with tab2:
+        st.write("**Asset Growth Over Time**")
+        
+        if 'YearMonth' in df.columns and 'Value' in df.columns:
+            # Total portfolio value over time
+            portfolio_timeline = df.groupby('YearMonth')['Value'].sum().reset_index()
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                fig_portfolio = px.line(
+                    portfolio_timeline,
+                    x='YearMonth',
+                    y='Value',
+                    title="Total Portfolio Value Over Time",
+                    labels={'Value': 'Total Value ($)', 'YearMonth': 'Month'}
+                )
+                st.plotly_chart(fig_portfolio, use_container_width=True)
+            
+            with col2:
+                # Calculate month-over-month growth
+                portfolio_timeline['Growth_Rate'] = portfolio_timeline['Value'].pct_change() * 100
+                fig_growth = px.bar(
+                    portfolio_timeline.dropna(),
+                    x='YearMonth',
+                    y='Growth_Rate',
+                    title="Month-over-Month Growth Rate (%)",
+                    labels={'Growth_Rate': 'Growth Rate (%)', 'YearMonth': 'Month'}
+                )
+                st.plotly_chart(fig_growth, use_container_width=True)
+            
+            # Growth statistics table
+            st.write("**Growth Statistics**")
+            if len(portfolio_timeline) > 1:
+                total_growth = ((portfolio_timeline['Value'].iloc[-1] / portfolio_timeline['Value'].iloc[0]) - 1) * 100
+                avg_monthly_growth = portfolio_timeline['Growth_Rate'].mean()
+                max_growth = portfolio_timeline['Growth_Rate'].max()
+                max_loss = portfolio_timeline['Growth_Rate'].min()
+                
+                growth_stats = pd.DataFrame({
+                    'Metric': ['Total Growth (%)', 'Average Monthly Growth (%)', 'Best Month (%)', 'Worst Month (%)'],
+                    'Value': [f"{total_growth:.2f}%", f"{avg_monthly_growth:.2f}%", f"{max_growth:.2f}%", f"{max_loss:.2f}%"]
+                })
+                
+                st.dataframe(growth_stats, use_container_width=True, hide_index=True)
+    
+    with tab3:
+        st.write("**Account Performance Analysis**")
+        
+        if 'YearMonth' in df.columns and 'Value' in df.columns:
+            # Account performance over time
+            account_performance = df.groupby(['YearMonth', 'Account'])['Value'].sum().reset_index()
+            
+            fig_account_perf = px.line(
+                account_performance,
+                x='YearMonth',
+                y='Value',
+                color='Account',
+                title="Account Performance Over Time",
+                labels={'Value': 'Value ($)', 'YearMonth': 'Month'}
+            )
+            st.plotly_chart(fig_account_perf, use_container_width=True)
+            
+            # Account growth comparison
+            st.write("**Account Growth Comparison**")
+            account_growth = []
+            
+            for account in df['Account'].unique():
+                account_data = df[df['Account'] == account].groupby('YearMonth')['Value'].sum()
+                if len(account_data) > 1:
+                    growth = ((account_data.iloc[-1] / account_data.iloc[0]) - 1) * 100
+                    account_growth.append({
+                        'Account': account,
+                        'Total Growth (%)': f"{growth:.2f}%",
+                        'Current Value': f"${account_data.iloc[-1]:,.0f}",
+                        'Starting Value': f"${account_data.iloc[0]:,.0f}"
+                    })
+            
+            if account_growth:
+                growth_df = pd.DataFrame(account_growth)
+                st.dataframe(growth_df, use_container_width=True, hide_index=True)
+    
+    with tab4:
+        st.write("**Category Performance Trends**")
+        
+        if 'YearMonth' in df.columns and 'Value' in df.columns:
+            # Category performance over time
+            category_performance = df.groupby(['YearMonth', 'Category'])['Value'].sum().reset_index()
+            
+            fig_category_perf = px.line(
+                category_performance,
+                x='YearMonth',
+                y='Value',
+                color='Category',
+                title="Category Performance Over Time",
+                labels={'Value': 'Value ($)', 'YearMonth': 'Month'}
+            )
+            st.plotly_chart(fig_category_perf, use_container_width=True)
+            
+            # Category allocation changes
+            st.write("**Category Allocation Changes**")
+            
+            # Get first and last month data
+            first_month = df['YearMonth'].min()
+            last_month = df['YearMonth'].max()
+            
+            first_month_data = df[df['YearMonth'] == first_month].groupby('Category')['Value'].sum()
+            last_month_data = df[df['YearMonth'] == last_month].groupby('Category')['Value'].sum()
+            
+            # Calculate allocation changes
+            allocation_changes = []
+            for category in set(first_month_data.index) | set(last_month_data.index):
+                first_value = first_month_data.get(category, 0)
+                last_value = last_month_data.get(category, 0)
+                
+                first_pct = (first_value / first_month_data.sum()) * 100 if first_month_data.sum() > 0 else 0
+                last_pct = (last_value / last_month_data.sum()) * 100 if last_month_data.sum() > 0 else 0
+                
+                allocation_changes.append({
+                    'Category': category,
+                    'Initial Allocation (%)': f"{first_pct:.2f}%",
+                    'Current Allocation (%)': f"{last_pct:.2f}%",
+                    'Change (%)': f"{last_pct - first_pct:+.2f}%",
+                    'Initial Value': f"${first_value:,.0f}",
+                    'Current Value': f"${last_value:,.0f}",
+                    'Value Change': f"${last_value - first_value:+,.0f}"
+                })
+            
+            if allocation_changes:
+                changes_df = pd.DataFrame(allocation_changes)
+                st.dataframe(changes_df, use_container_width=True, hide_index=True)
+    
+    # Raw Data Table
+    st.subheader("📋 Raw Asset Data")
+    
+    # Add filters for the raw data
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        if 'YearMonth' in df.columns:
+            available_months = sorted(df['YearMonth'].unique())
+            selected_month = st.selectbox("Filter by Month", ['All'] + [m.strftime('%Y-%m') for m in available_months])
+        else:
+            selected_month = 'All'
+    
+    with col2:
+        if 'Category' in df.columns:
+            available_categories = ['All'] + sorted(df['Category'].unique().tolist())
+            selected_category = st.selectbox("Filter by Category", available_categories)
+        else:
+            selected_category = 'All'
+    
+    with col3:
+        if 'Account' in df.columns:
+            available_accounts = ['All'] + sorted(df['Account'].unique().tolist())
+            selected_account = st.selectbox("Filter by Account", available_accounts)
+        else:
+            selected_account = 'All'
+    
+    # Apply filters
+    filtered_df = df.copy()
+    
+    if selected_month != 'All':
+        selected_month_dt = pd.to_datetime(selected_month)
+        filtered_df = filtered_df[filtered_df['YearMonth'] == selected_month_dt]
+    
+    if selected_category != 'All':
+        filtered_df = filtered_df[filtered_df['Category'] == selected_category]
+    
+    if selected_account != 'All':
+        filtered_df = filtered_df[filtered_df['Account'] == selected_account]
+    
+    # Format the dataframe for display
+    display_df = filtered_df.copy()
+    if 'YearMonth' in display_df.columns:
+        display_df['YearMonth'] = display_df['YearMonth'].dt.strftime('%Y-%m')
+    if 'Value' in display_df.columns:
+        display_df['Value'] = display_df['Value'].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else "N/A")
+    
     st.dataframe(
-        df,
+        display_df,
         use_container_width=True,
         hide_index=True
     )
