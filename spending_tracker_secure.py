@@ -466,38 +466,51 @@ def load_credit_card_data():
 def load_asset_tracker_data():
     """Load asset tracker data from Google Drive"""
     # Import the functions we need
-    from google_drive_utils import get_file_id_from_path, download_file_from_drive
+    from google_drive_utils import get_file_id_from_path, download_file_from_drive, load_excel_from_drive
     
-    # Check if there's a specific file ID for asset tracker
-    asset_tracker_file_id = os.getenv("ASSET_TRACKER_FILE_ID")
-    if asset_tracker_file_id:
-        file_id = asset_tracker_file_id
-    else:
-        # Search for file by path
-        file_id = get_file_id_from_path("FINANCE", "자산트랙킹.xlsx")
-        if not file_id:
-            st.error("Could not find asset tracker file in Google Drive")
-            return pd.DataFrame()
-    
-    # Download the file temporarily
-    temp_filename = "temp_asset_tracker_data.xlsx"
-    if download_file_from_drive(file_id, temp_filename):
-        try:
-            # Load the correct sheet
-            df = pd.read_excel(temp_filename, sheet_name="자산트랙킹_v2")
+    ASSET_TRACKER_FNAME = "자산트랙킹"
+    # Method 1: Try using the utility function first (more robust)
+    try:
+        df = load_excel_from_drive(folder_name="FINANCE", file_name=ASSET_TRACKER_FNAME, sheet_name="자산트랙킹_v2")
+        if not df.empty:
             return df
-        except Exception as e:
-            st.error(f"Error loading asset tracker data: {e}")
-            return pd.DataFrame()
-        finally:
-            # Clean up temporary file
+    except Exception as e:
+        st.warning(f"Method 1 failed: {e}")
+    
+    # Method 2: Try with direct file ID
+    try:
+        asset_tracker_file_id = os.getenv("ASSET_TRACKER_FILE_ID")
+        if asset_tracker_file_id:
+            file_id = asset_tracker_file_id
+        else:
+            # Search for file by path
+            file_id = get_file_id_from_path("FINANCE", ASSET_TRACKER_FNAME)
+            if not file_id:
+                st.error("Could not find asset tracker file in Google Drive")
+                return pd.DataFrame()
+        
+        # Download the file temporarily
+        temp_filename = f"temp_{ASSET_TRACKER_FNAME}_data.xlsx"
+        if download_file_from_drive(file_id, temp_filename):
             try:
-                if os.path.exists(temp_filename):
-                    os.remove(temp_filename)
-            except:
-                pass  # Ignore cleanup errors
-    else:
-        st.error("Failed to download file from Google Drive")
+                # Load the correct sheet
+                df = pd.read_excel(temp_filename, sheet_name="자산트랙킹_v2")
+                return df
+            except Exception as e:
+                st.error(f"Error loading asset tracker data: {e}")
+                return pd.DataFrame()
+            finally:
+                # Clean up temporary file
+                try:
+                    if os.path.exists(temp_filename):
+                        os.remove(temp_filename)
+                except:
+                    pass  # Ignore cleanup errors
+        else:
+            st.error("Failed to download file from Google Drive")
+            return pd.DataFrame()
+    except Exception as e:
+        st.error(f"Method 2 failed: {e}")
         return pd.DataFrame()
 
 def credit_card_history_page():
@@ -659,6 +672,10 @@ def asset_tracker_page():
     
     if df.empty:
         st.error("No asset tracker data found. Please check the file path and sheet name.")
+        st.info("💡 **Troubleshooting Tips:**")
+        st.info("1. Make sure ASSET_TRACKER_FILE_ID is set in your environment variables")
+        st.info("2. Ensure the Google Drive file is shared with 'Anyone with the link can view'")
+        st.info("3. Check that the file name is exactly '자산트랙킹.xlsx' and sheet name is '자산트랙킹_v2'")
         return
     
     # Data preprocessing

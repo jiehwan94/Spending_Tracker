@@ -40,10 +40,29 @@ def download_file_from_drive(file_id, filename):
         # Method 1: Using gdown (simpler, works with shared links)
         url = f"https://drive.google.com/uc?id={file_id}"
         gdown.download(url, filename, quiet=False)
-        return True
+        
+        # Check if file was actually downloaded
+        if os.path.exists(filename) and os.path.getsize(filename) > 0:
+            return True
+        else:
+            st.warning("File download may have failed - file is empty or missing")
+            return False
     except Exception as e:
         st.error(f"Error downloading file: {e}")
-        return False
+        # # Try alternative method if gdown fails
+        # try:
+        #     st.info("Trying alternative download method...")
+        #     # Alternative URL format
+        #     alt_url = f"https://drive.google.com/file/d/{file_id}/view"
+        #     gdown.download(alt_url, filename, quiet=False)
+            
+        #     if os.path.exists(filename) and os.path.getsize(filename) > 0:
+        #         return True
+        #     else:
+        #         return False
+        # except Exception as e2:
+        #     st.error(f"Alternative method also failed: {e2}")
+        #     return False
 
 def get_file_id_from_path(folder_name, file_name):
     """Get file ID from folder name and file name using Google Drive API"""
